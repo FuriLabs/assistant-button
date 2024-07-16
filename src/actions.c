@@ -5,6 +5,7 @@
 #include <gst/gst.h>
 #include <batman/wlrdisplay.h>
 #include "actions.h"
+#include "virtkey.h"
 #include "utils.h"
 
 static GMainLoop *loop;
@@ -266,4 +267,59 @@ void take_screenshot() {
     g_free(screenshot_path);
     g_free(screenshots_dir);
     g_free(pictures_dir);
+}
+
+void send_tab() {
+    struct wtype wtype;
+    memset(&wtype, 0, sizeof(wtype));
+
+    wtype.commands = calloc(1, sizeof(wtype.commands[0]));
+    wtype.command_count = 1;
+
+    struct wtype_command *cmd = &wtype.commands[0];
+    cmd->type = WTYPE_COMMAND_TEXT;
+    xkb_keysym_t ks = xkb_keysym_from_name("Tab", XKB_KEYSYM_CASE_INSENSITIVE);
+    if (ks == XKB_KEY_NoSymbol) {
+        g_print("Unknown key 'Tab'");
+        return;
+    }
+    cmd->key_codes = malloc(sizeof(cmd->key_codes[0]));
+    cmd->key_codes_len = 1;
+    cmd->key_codes[0] = get_key_code_by_xkb(&wtype, ks);
+    cmd->delay_ms = 0;
+
+    wtype.display = wl_display_connect(NULL);
+    if (wtype.display == NULL) {
+        g_print("Wayland connection failed\n");
+        return;
+    }
+    wtype.registry = wl_display_get_registry(wtype.display);
+    wl_registry_add_listener(wtype.registry, &registry_listener, &wtype);
+    wl_display_dispatch(wtype.display);
+    wl_display_roundtrip(wtype.display);
+
+    if (wtype.manager == NULL) {
+        g_print("Compositor does not support the virtual keyboard protocol\n");
+        return;
+    }
+    if (wtype.seat == NULL) {
+        g_print("No seat found\n");
+        return;
+    }
+
+    wtype.keyboard = zwp_virtual_keyboard_manager_v1_create_virtual_keyboard(
+        wtype.manager, wtype.seat
+    );
+
+    upload_keymap(&wtype);
+    run_commands(&wtype);
+
+    g_print("Tab key sent to seat\n");
+
+    free(wtype.commands);
+    free(wtype.keymap);
+    zwp_virtual_keyboard_v1_destroy(wtype.keyboard);
+    zwp_virtual_keyboard_manager_v1_destroy(wtype.manager);
+    wl_registry_destroy(wtype.registry);
+    wl_display_disconnect(wtype.display);
 }

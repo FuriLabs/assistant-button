@@ -8,5 +8,6 @@ void handle_flashlight();
 void open_camera();
 void take_picture();
 void take_screenshot();
+void send_tab();
 
 #endif // ACTIONS_H

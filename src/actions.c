@@ -115,7 +115,7 @@ static gboolean bus_call(GstBus *bus, GstMessage *msg, gpointer data) {
     return TRUE;
 }
 
-void create_gst_pipeline() {
+void take_picture() {
     GstElement *pipeline, *source, *convert, *flip, *enc, *sink;
     GstBus *bus;
     GstStateChangeReturn ret;
@@ -184,7 +184,86 @@ void create_gst_pipeline() {
     g_main_loop_run(loop);
 
     gst_element_set_state(pipeline, GST_STATE_NULL);
+    g_print("Picture saved to: %s\n", filename);
     gst_object_unref(pipeline);
     g_main_loop_unref(loop);
     g_free(filename);
+}
+
+void take_screenshot() {
+    GDBusConnection *connection;
+    GError *error = NULL;
+    GVariant *result;
+    gboolean success;
+    gchar *filename_used;
+    gchar datetime[64];
+    time_t now;
+    struct tm *t;
+
+    const char *home_dir = getenv("HOME");
+    if (home_dir == NULL)
+        return;
+
+    gchar *pictures_dir = g_strdup_printf("%s/Pictures", home_dir);
+    gchar *screenshots_dir = g_strdup_printf("%s/Screenshots", pictures_dir);
+
+    if (g_mkdir_with_parents(screenshots_dir, 0755) == -1) {
+        g_printerr("Failed to create directory %s\n", screenshots_dir);
+        g_free(screenshots_dir);
+        g_free(pictures_dir);
+        return;
+    }
+
+    now = time(NULL);
+    t = localtime(&now);
+    strftime(datetime, sizeof(datetime), "Screenshot from %Y-%m-%d %H-%M-%S.png", t);
+    gchar *screenshot_path = g_strdup_printf("%s/%s", screenshots_dir, datetime);
+
+    connection = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
+    if (connection == NULL) {
+        g_printerr("Failed to get session bus: %s\n", error->message);
+        g_error_free(error);
+        g_free(screenshot_path);
+        g_free(screenshots_dir);
+        g_free(pictures_dir);
+        return;
+    }
+
+    result = g_dbus_connection_call_sync(
+        connection,
+        "org.gnome.Shell.Screenshot",
+        "/org/gnome/Shell/Screenshot",
+        "org.gnome.Shell.Screenshot",
+        "Screenshot",
+        g_variant_new("(bbs)", TRUE, FALSE, screenshot_path),
+        G_VARIANT_TYPE("(bs)"),
+        G_DBUS_CALL_FLAGS_NONE,
+        -1,
+        NULL,
+        &error
+    );
+
+    if (result == NULL) {
+        g_printerr("Failed to take screenshot: %s\n", error->message);
+        g_error_free(error);
+        g_object_unref(connection);
+        g_free(screenshot_path);
+        g_free(screenshots_dir);
+        g_free(pictures_dir);
+        return;
+    }
+
+    g_variant_get(result, "(bs)", &success, &filename_used);
+
+    if (success)
+        g_print("Screenshot saved to: %s\n", filename_used);
+    else
+        g_print("Failed to take screenshot.\n");
+
+    g_free(filename_used);
+    g_variant_unref(result);
+    g_object_unref(connection);
+    g_free(screenshot_path);
+    g_free(screenshots_dir);
+    g_free(pictures_dir);
 }

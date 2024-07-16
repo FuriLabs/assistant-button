@@ -6,6 +6,7 @@
 
 void handle_flashlight();
 void open_camera();
-void create_gst_pipeline();
+void take_picture();
+void take_screenshot();
 
 #endif // ACTIONS_H

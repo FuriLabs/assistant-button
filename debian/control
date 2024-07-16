@@ -11,6 +11,7 @@ Build-Depends: debhelper-compat (= 13),
                libgstreamer-plugins-base1.0-dev,
                batman-dev,
                libbatman-wrappers,
+               libxkbcommon-dev,
 Standards-Version: 4.5.0.3
 Vcs-Browser: https://github.com/furilabs/assistant-button
 Vcs-Git: https://github.com/furilabs/assistant-button.git

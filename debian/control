@@ -4,6 +4,13 @@ Section: misc
 Priority: optional
 Build-Depends: debhelper-compat (= 13),
                gcc,
+               pkg-config,
+               libglib2.0-dev,
+               libwayland-dev,
+               libgstreamer1.0-dev,
+               libgstreamer-plugins-base1.0-dev,
+               batman-dev,
+               libbatman-wrappers,
 Standards-Version: 4.5.0.3
 Vcs-Browser: https://github.com/furilabs/assistant-button
 Vcs-Git: https://github.com/furilabs/assistant-button.git

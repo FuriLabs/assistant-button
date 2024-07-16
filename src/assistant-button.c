@@ -11,6 +11,8 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <linux/input.h>
+#include "actions.h"
+#include "utils.h"
 
 #define DEFAULT_SHORT_PRESS_MAX 500  // ms
 #define DEFAULT_DEVICE "/dev/input/event1"
@@ -54,9 +56,8 @@ void read_config(struct state *state) {
 
 char* parse_custom_action(const char *filename) {
     const char *home_dir = getenv("HOME");
-    if (home_dir == NULL) {
+    if (home_dir == NULL)
         return NULL;
-    }
 
     char file_path[512];
     snprintf(file_path, sizeof(file_path), "%s/.config/assistant-button/%s", home_dir, filename);
@@ -77,14 +78,6 @@ char* parse_custom_action(const char *filename) {
         }
     }
     return NULL;
-}
-
-void run_command(const char *command) {
-    pid_t pid = fork();
-    if (pid == 0) {
-        execl("/bin/sh", "sh", "-c", command, NULL);
-        _exit(127);
-    }
 }
 
 int short_press() {

@@ -323,3 +323,40 @@ void send_tab() {
     wl_registry_destroy(wtype.registry);
     wl_display_disconnect(wtype.display);
 }
+
+void manual_autorotate() {
+    GSettings *settings;
+    GSettingsSchema *schema;
+    GSettingsSchemaSource *schema_source;
+    gboolean current_value;
+
+    schema_source = g_settings_schema_source_get_default();
+    schema = g_settings_schema_source_lookup(schema_source, "org.gnome.settings-daemon.peripherals.touchscreen", TRUE);
+    if (schema == NULL) {
+        g_print("Schema 'org.gnome.settings-daemon.peripherals.touchscreen' not found\n");
+        return;
+    }
+
+    if (!g_settings_schema_has_key(schema, "orientation-lock")) {
+        g_print("Key 'orientation-lock' not found in the schema\n");
+        g_settings_schema_unref(schema);
+        return;
+    }
+
+    settings = g_settings_new("org.gnome.settings-daemon.peripherals.touchscreen");
+
+    current_value = g_settings_get_boolean(settings, "orientation-lock");
+    if (!current_value) {
+        g_print("Orientation lock is already enabled. No action taken.\n");
+        g_object_unref(settings);
+        g_settings_schema_unref(schema);
+        return;
+    }
+
+    g_settings_set_boolean(settings, "orientation-lock", FALSE);
+    usleep(2000000); // two second should be enough for phosh to rotate
+    g_settings_set_boolean(settings, "orientation-lock", TRUE);
+
+    g_object_unref(settings);
+    g_settings_schema_unref(schema);
+}

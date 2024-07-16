@@ -5,5 +5,6 @@
 #define UTILS_H
 
 void run_command(const char *command);
+void show_notification(const char *summary, const char *body);
 
 #endif // UTILS_H

@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 // Copyright (C) 2024 Bardia Moshiri <fakeshell@bardia.tech>
 
-#include <time.h>
-#include <glib.h>
-#include <stdio.h>
 #include <gio/gio.h>
 #include <gst/gst.h>
 #include <batman/wlrdisplay.h>
@@ -185,6 +182,8 @@ void take_picture() {
 
     gst_element_set_state(pipeline, GST_STATE_NULL);
     g_print("Picture saved to: %s\n", filename);
+    show_notification("Picture saved to", filename);
+
     gst_object_unref(pipeline);
     g_main_loop_unref(loop);
     g_free(filename);
@@ -255,9 +254,10 @@ void take_screenshot() {
 
     g_variant_get(result, "(bs)", &success, &filename_used);
 
-    if (success)
+    if (success) {
         g_print("Screenshot saved to: %s\n", filename_used);
-    else
+        show_notification("Screenshot saved to", filename_used);
+    } else
         g_print("Failed to take screenshot.\n");
 
     g_free(filename_used);

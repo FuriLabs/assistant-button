@@ -17,7 +17,7 @@
 #define DEFAULT_SHORT_PRESS_MAX 500  // ms
 #define DEFAULT_DEVICE "/dev/input/event1"
 #define CONFIG_FILE "/etc/assistant-button.conf"
-#define DOUBLE_PRESS_MAX 200  // ms
+#define DEFAULT_DOUBLE_PRESS_MAX 200  // ms
 
 struct state {
     int fd;
@@ -27,6 +27,7 @@ struct state {
     int press_count;
     int has_long_press_occurred;
     int short_press_max;
+    int double_press_max;
     char device[256];
     int short_press_count;
     long first_press_duration;
@@ -47,6 +48,8 @@ void read_config(struct state *state) {
     char line[256];
     while (fgets(line, sizeof(line), file)) {
         if (sscanf(line, "SHORT_PRESS_MAX=%d", &state->short_press_max) == 1)
+            continue;
+        if (sscanf(line, "DOUBLE_PRESS_MAX=%d", &state->double_press_max) == 1)
             continue;
         if (sscanf(line, "DEVICE=%s", state->device) == 1)
             continue;
@@ -119,6 +122,7 @@ int main(int argc, char *argv[]) {
         .press_count = 0,
         .has_long_press_occurred = 0,
         .short_press_max = DEFAULT_SHORT_PRESS_MAX,
+        .double_press_max = DEFAULT_DOUBLE_PRESS_MAX,
         .short_press_count = 0,
         .first_press_duration = 0
     };
@@ -130,8 +134,11 @@ int main(int argc, char *argv[]) {
     if (argc > 1)
         state.short_press_max = atoi(argv[1]);
 
-    if (argc > 2) {
-        strncpy(state.device, argv[2], sizeof(state.device) - 1);
+    if (argc > 2)
+        state.double_press_max = atoi(argv[2]);
+
+    if (argc > 3) {
+        strncpy(state.device, argv[3], sizeof(state.device) - 1);
         state.device[sizeof(state.device) - 1] = '\0';
     }
 
@@ -165,7 +172,7 @@ int main(int argc, char *argv[]) {
                                 state.first_press_duration = duration;
                             } else if (state.short_press_count == 2) {
                                 long total_press_duration = state.first_press_duration + duration;
-                                if (total_press_duration < DOUBLE_PRESS_MAX)
+                                if (total_press_duration < state.double_press_max)
                                     double_press();
                                 else
                                     double_short_press();

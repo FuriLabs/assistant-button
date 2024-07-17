@@ -1,1 +1,2 @@
 assistant-button /usr/bin
+assistant-button.conf /etc/

@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 #include <sys/stat.h>
 #include <linux/input.h>
 #include "actions.h"
@@ -18,6 +19,16 @@
 #define DEFAULT_DEVICE "/dev/input/event1"
 #define CONFIG_FILE "/etc/assistant-button.conf"
 #define DEFAULT_DOUBLE_PRESS_MAX 200  // ms
+
+enum PredefinedAction {
+    NO_ACTION = 0,
+    FLASHLIGHT = 1,
+    OPEN_CAMERA = 2,
+    TAKE_PICTURE = 3,
+    TAKE_SCREENSHOT = 4,
+    SEND_TAB = 5,
+    MANUAL_AUTOROTATE = 6
+};
 
 struct state {
     int fd;
@@ -57,6 +68,69 @@ void read_config(struct state *state) {
     fclose(file);
 }
 
+void handle_predefined_action(enum PredefinedAction action) {
+    switch (action) {
+        case FLASHLIGHT:
+            handle_flashlight();
+            break;
+        case OPEN_CAMERA:
+            open_camera();
+            break;
+        case TAKE_PICTURE:
+            take_picture();
+            break;
+        case TAKE_SCREENSHOT:
+            take_screenshot();
+            break;
+        case SEND_TAB:
+            send_tab();
+            break;
+        case MANUAL_AUTOROTATE:
+            manual_autorotate();
+            break;
+        default:
+            fprintf(stderr, "Unknown predefined action: %d\n", action);
+    }
+}
+
+int read_config_int(const char *filename) {
+    const char *home_dir = getenv("HOME");
+    if (home_dir == NULL) {
+        fprintf(stderr, "Error: HOME environment variable not set\n");
+        return -1;
+    }
+
+    char file_path[PATH_MAX];
+    snprintf(file_path, sizeof(file_path), "%s/.config/assistant-button/%s", home_dir, filename);
+
+    FILE *file = fopen(file_path, "r");
+    if (file == NULL)
+        return -1;
+
+    char buffer[32];
+    if (fgets(buffer, sizeof(buffer), file) == NULL) {
+        fclose(file);
+        return -1;
+    }
+
+    fclose(file);
+
+    char *endptr;
+    long value = strtol(buffer, &endptr, 10);
+
+    if (endptr == buffer || *endptr != '\n') {
+        fprintf(stderr, "Error: Invalid integer in file %s\n", file_path);
+        return -1;
+    }
+
+    if (value < INT_MIN || value > INT_MAX) {
+        fprintf(stderr, "Error: Integer out of range in file %s\n", file_path);
+        return -1;
+    }
+
+    return (int)value;
+}
+
 char* parse_custom_action(const char *filename) {
     const char *home_dir = getenv("HOME");
     if (home_dir == NULL)
@@ -89,6 +163,13 @@ int short_press() {
         run_command(command);
         return 1;
     }
+
+    int action_index = read_config_int("short_press_predefined");
+    if (action_index > 0 && action_index <= MANUAL_AUTOROTATE) {
+        handle_predefined_action((enum PredefinedAction)action_index);
+        return 1;
+    }
+
     return 0;
 }
 
@@ -98,6 +179,13 @@ int long_press() {
         run_command(command);
         return 1;
     }
+
+    int action_index = read_config_int("long_press_predefined");
+    if (action_index > 0 && action_index <= MANUAL_AUTOROTATE) {
+        handle_predefined_action((enum PredefinedAction)action_index);
+        return 1;
+    }
+
     return 0;
 }
 
@@ -107,6 +195,13 @@ int double_press() {
         run_command(command);
         return 1;
     }
+
+    int action_index = read_config_int("double_press_predefined");
+    if (action_index > 0 && action_index <= MANUAL_AUTOROTATE) {
+        handle_predefined_action((enum PredefinedAction)action_index);
+        return 1;
+    }
+
     return 0;
 }
 

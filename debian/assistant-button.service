@@ -1,0 +1,7 @@
+[Unit]
+Description=Assistant button listener
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/assistant-button
+Restart=on-failure

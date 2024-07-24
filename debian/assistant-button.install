@@ -1,2 +1,3 @@
-assistant-button /usr/bin
+assistant-button /usr/libexec/
 assistant-button.conf /etc/
+debian/assistant-button.service /usr/lib/systemd/user/

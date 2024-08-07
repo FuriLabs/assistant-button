@@ -254,7 +254,7 @@ int main(int argc, char *argv[]) {
                 close(state.fd);
                 return EXIT_FAILURE;
             }
-            if (state.ev.type == EV_KEY && state.ev.code == 102) {
+            if (state.ev.type == EV_KEY && state.ev.code == 112) {
                 if (state.ev.value == 1) { // Key press
                     state.press_time = current_time_ms();
                     state.press_count++;

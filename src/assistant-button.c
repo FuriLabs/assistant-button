@@ -19,6 +19,7 @@
 #define DEFAULT_DEVICE "/dev/input/event1"
 #define CONFIG_FILE "/etc/assistant-button.conf"
 #define DEFAULT_DOUBLE_PRESS_MAX 200  // ms
+#define ASSISTANT_KEY 112
 
 enum PredefinedAction {
     NO_ACTION = 0,
@@ -157,6 +158,18 @@ char* parse_custom_action(const char *filename) {
     return NULL;
 }
 
+int has_short_press_action() {
+    return parse_custom_action("short_press") != NULL || read_config_int("short_press_predefined") > 0;
+}
+
+int has_long_press_action() {
+    return parse_custom_action("long_press") != NULL || read_config_int("long_press_predefined") > 0;
+}
+
+int has_double_press_action() {
+    return parse_custom_action("double_press") != NULL || read_config_int("double_press_predefined") > 0;
+}
+
 int short_press() {
     char *command = parse_custom_action("short_press");
     if (command) {
@@ -205,9 +218,83 @@ int double_press() {
     return 0;
 }
 
-int double_short_press() {
-    short_press();
-    short_press();
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+
+int calculate_timeout(struct state *state) {
+    if (state->press_count == 0) {
+        return -1;
+    }
+
+    long long current_time = current_time_ms();
+    long time_since_press = current_time - state->press_time;
+
+    if (has_long_press_action() && !state->has_long_press_occurred) {
+        return MAX(0, state->short_press_max - time_since_press);
+    }
+
+    if (has_double_press_action() && state->short_press_count == 1) {
+        return MAX(0, state->double_press_max - time_since_press);
+    }
+
+    return 0;
+}
+
+void reset_state(struct state *state) {
+    state->short_press_count = 0;
+    state->press_count = 0;
+    state->has_long_press_occurred = 0;
+}
+
+int handle_events(struct state *state) {
+    while (1) {
+        int ret = poll(&state->pfd, 1, 0);
+        if (ret > 0) {
+            if (read(state->fd, &state->ev, sizeof(struct input_event)) == -1) {
+                perror("Failed to read the event");
+                return -1;
+            }
+
+            if (state->ev.type == EV_KEY && state->ev.code == ASSISTANT_KEY) {
+                if (state->ev.value == 1) {
+                    state->press_time = current_time_ms();
+                    state->press_count++;
+                    state->has_long_press_occurred = 0;
+                } else if (state->ev.value == 0) {
+                    if (!state->has_long_press_occurred) {
+                        long duration = current_time_ms() - state->press_time;
+                        if (duration < state->short_press_max) {
+                            // Short press: if we don't have a double press action, execute the short press action immediately
+                            if (!has_double_press_action()) {
+                                short_press();
+                                reset_state(state);
+                            } else {
+                                state->short_press_count++;
+                                if (state->short_press_count > 1) {
+                                    double_press();
+                                    reset_state(state);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (ret == 0) {
+            return 0; // No more events
+        } else {
+            if (errno != EINTR) {
+                perror("Poll failed");
+                return -1;
+            }
+        }
+    }
+}
+
+void wait_for_next_event(struct state *state) {
+    int timeout = -1;
+    if ((has_double_press_action() || has_long_press_action()) && state->press_count > 0) {
+        timeout = state->short_press_max;
+    }
+    poll(&state->pfd, 1, timeout);
 }
 
 int main(int argc, char *argv[]) {
@@ -247,47 +334,26 @@ int main(int argc, char *argv[]) {
     state.pfd.events = POLLIN;
 
     while (1) {
-        int ret = poll(&state.pfd, 1, state.short_press_max);
+        int timeout = calculate_timeout(&state);
+        int ret = poll(&state.pfd, 1, timeout);
+
         if (ret > 0) {
-            if (read(state.fd, &state.ev, sizeof(struct input_event)) == -1) {
-                perror("Failed to read the event");
+            if (handle_events(&state) != 0) {
                 close(state.fd);
                 return EXIT_FAILURE;
             }
-            if (state.ev.type == EV_KEY && state.ev.code == 112) {
-                if (state.ev.value == 1) { // Key press
-                    state.press_time = current_time_ms();
-                    state.press_count++;
-                    state.has_long_press_occurred = 0;
-                } else if (state.ev.value == 0) { // Key release
-                    if (!state.has_long_press_occurred) {
-                        long duration = current_time_ms() - state.press_time;
-                        if (duration < state.short_press_max) {
-                            if (++state.short_press_count == 1) {
-                                state.first_press_duration = duration;
-                            } else if (state.short_press_count == 2) {
-                                long total_press_duration = state.first_press_duration + duration;
-                                if (total_press_duration < state.double_press_max)
-                                    double_press();
-                                else
-                                    double_short_press();
-                                state.short_press_count = 0;
-                            }
-                        }
-                    }
-                    state.press_count = 0;
-                }
-            }
         } else if (ret == 0) {
+            // Timeout occurred, process any pending double/long press actions
             long long current_time = current_time_ms();
-            if (current_time - state.press_time >= state.short_press_max && !state.has_long_press_occurred && state.press_count > 0) {
-                long duration = current_time - state.press_time;
-                long_press();
-                state.has_long_press_occurred = 1;
-                state.short_press_count = 0;
-            } else if (state.short_press_count == 1) {
+            long duration = current_time - state.press_time;
+
+            if (state.short_press_count == 1 && duration >= state.double_press_max) {
                 short_press();
-                state.short_press_count = 0;
+                reset_state(&state);
+            } else if (duration >= state.short_press_max && !state.has_long_press_occurred && state.press_count > 0) {
+                long_press();
+                reset_state(&state);
+                state.has_long_press_occurred = 1;
             }
         } else {
             if (errno != EINTR) {

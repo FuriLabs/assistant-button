@@ -84,7 +84,7 @@ void handle_predefined_action(enum PredefinedAction action) {
             take_screenshot();
             break;
         case SEND_TAB:
-            send_tab();
+            send_key("Tab");
             break;
         case MANUAL_AUTOROTATE:
             manual_autorotate();

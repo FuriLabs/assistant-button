@@ -29,7 +29,8 @@ enum PredefinedAction {
     TAKE_SCREENSHOT = 4,
     SEND_TAB = 5,
     MANUAL_AUTOROTATE = 6,
-    SEND_XF86BACK = 7
+    SEND_XF86BACK = 7,
+    SEND_ESCAPE = 8
 };
 
 struct state {
@@ -92,6 +93,9 @@ void handle_predefined_action(enum PredefinedAction action) {
             break;
         case SEND_XF86BACK:
             send_key("XF86Back");
+            break;
+        case SEND_ESCAPE:
+            send_key("Escape");
             break;
         default:
             fprintf(stderr, "Unknown predefined action: %d\n", action);
@@ -182,7 +186,7 @@ int short_press() {
     }
 
     int action_index = read_config_int("short_press_predefined");
-    if (action_index > 0 && action_index <= SEND_XF86BACK) {
+    if (action_index > 0 && action_index <= SEND_ESCAPE) {
         handle_predefined_action((enum PredefinedAction)action_index);
         return 1;
     }
@@ -198,7 +202,7 @@ int long_press() {
     }
 
     int action_index = read_config_int("long_press_predefined");
-    if (action_index > 0 && action_index <= SEND_XF86BACK) {
+    if (action_index > 0 && action_index <= SEND_ESCAPE) {
         handle_predefined_action((enum PredefinedAction)action_index);
         return 1;
     }
@@ -214,7 +218,7 @@ int double_press() {
     }
 
     int action_index = read_config_int("double_press_predefined");
-    if (action_index > 0 && action_index <= SEND_XF86BACK) {
+    if (action_index > 0 && action_index <= SEND_ESCAPE) {
         handle_predefined_action((enum PredefinedAction)action_index);
         return 1;
     }

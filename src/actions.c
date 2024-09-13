@@ -269,7 +269,7 @@ void take_screenshot() {
     g_free(pictures_dir);
 }
 
-void send_tab() {
+void send_key(const char *name) {
     struct wtype wtype;
     memset(&wtype, 0, sizeof(wtype));
 
@@ -278,9 +278,9 @@ void send_tab() {
 
     struct wtype_command *cmd = &wtype.commands[0];
     cmd->type = WTYPE_COMMAND_TEXT;
-    xkb_keysym_t ks = xkb_keysym_from_name("Tab", XKB_KEYSYM_CASE_INSENSITIVE);
+    xkb_keysym_t ks = xkb_keysym_from_name(name, XKB_KEYSYM_CASE_INSENSITIVE);
     if (ks == XKB_KEY_NoSymbol) {
-        g_print("Unknown key 'Tab'");
+        g_print("Unknown key '%s'", name);
         return;
     }
     cmd->key_codes = malloc(sizeof(cmd->key_codes[0]));
@@ -314,7 +314,7 @@ void send_tab() {
     upload_keymap(&wtype);
     run_commands(&wtype);
 
-    g_print("Tab key sent to seat\n");
+    g_print("%s key sent to seat\n", name);
 
     free(wtype.commands);
     free(wtype.keymap);

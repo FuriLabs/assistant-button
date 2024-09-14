@@ -12,6 +12,7 @@ Build-Depends: debhelper-compat (= 13),
                batman-dev,
                libbatman-wrappers,
                libxkbcommon-dev,
+               libdbus-1-dev,
 Standards-Version: 4.5.0.3
 Vcs-Browser: https://github.com/furilabs/assistant-button
 Vcs-Git: https://github.com/furilabs/assistant-button.git

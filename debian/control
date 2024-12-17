@@ -10,7 +10,6 @@ Build-Depends: debhelper-compat (= 13),
                libgstreamer1.0-dev,
                libgstreamer-plugins-base1.0-dev,
                batman-dev,
-               libbatman-wrappers,
                libxkbcommon-dev,
                libdbus-1-dev,
 Standards-Version: 4.5.0.3
@@ -19,5 +18,6 @@ Vcs-Git: https://github.com/furilabs/assistant-button.git
 
 Package: assistant-button
 Architecture: any
-Depends: ${misc:Depends},
+Depends: ${misc:Depends}, ${shlibs:Depends},
+         libbatman-wrappers,
 Description: Service managing the assistant button on the FLX1

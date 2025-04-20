@@ -14,7 +14,7 @@ void handle_flashlight() {
     GDBusConnection *connection;
     GError *error = NULL;
     GVariant *result;
-    gint32 brightness = 0;
+    guint32 brightness = 0;
     int screen_status;
 
     connection = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
@@ -26,11 +26,11 @@ void handle_flashlight() {
 
     result = g_dbus_connection_call_sync(
         connection,
-        "org.droidian.Flashlightd",
-        "/org/droidian/Flashlightd",
+        "io.furios.Flashlightd",
+        "/io/furios/Flashlightd",
         "org.freedesktop.DBus.Properties",
         "Get",
-        g_variant_new("(ss)", "org.droidian.Flashlightd", "Brightness"),
+        g_variant_new("(ss)", "io.furios.Flashlightd", "Brightness"),
         G_VARIANT_TYPE("(v)"),
         G_DBUS_CALL_FLAGS_NONE,
         -1,
@@ -47,11 +47,11 @@ void handle_flashlight() {
 
     GVariant *brightness_variant;
     g_variant_get(result, "(v)", &brightness_variant);
-    g_variant_get(brightness_variant, "i", &brightness);
+    g_variant_get(brightness_variant, "u", &brightness);
     g_variant_unref(brightness_variant);
     g_variant_unref(result);
 
-    screen_status = wlrdisplay(0, NULL);
+    screen_status = get_wlroots_screen_status();
 
     gint32 new_brightness;
     if (screen_status == 0) // Screen is on
@@ -61,9 +61,9 @@ void handle_flashlight() {
 
     result = g_dbus_connection_call_sync(
         connection,
-        "org.droidian.Flashlightd",
-        "/org/droidian/Flashlightd",
-        "org.droidian.Flashlightd",
+        "io.furios.Flashlightd",
+        "/io/furios/Flashlightd",
+        "io.furios.Flashlightd",
         "SetBrightness",
         g_variant_new("(u)", new_brightness),
         NULL,

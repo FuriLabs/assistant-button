@@ -22,7 +22,7 @@ struct config {
 
 /**
  * Load configuration from system configuration files.
- * Tries files in priority order: /etc -> /usr/share -> /usr/lib/furios/device
+ * Tries files in priority order: /etc -> /usr/lib/furios/device -> /usr/share/assistant-button
  *
  * @param config  Configuration structure to populate.
  * @return        TRUE on success, FALSE on failure.

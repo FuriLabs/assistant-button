@@ -7,8 +7,8 @@
 
 static const gchar *config_paths[] = {
     "/etc/assistant-button/assistant-button.conf",
-    "/usr/share/assistant-button/assistant-button.conf",
     "/usr/lib/furios/device/assistant-button.conf",
+    "/usr/share/assistant-button/assistant-button.conf",
     NULL
 };
 

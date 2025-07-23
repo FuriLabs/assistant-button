@@ -14,16 +14,16 @@
 #include <limits.h>
 #include <sys/stat.h>
 #include <linux/input.h>
-#include <dbus/dbus.h>
+#include <gio/gio.h>
 #include "actions.h"
 #include "utils.h"
+#include "dbus.h"
 
 #define DEFAULT_SHORT_PRESS_MAX 500  /* ms */
 #define DEFAULT_DEVICE "/dev/input/event1"
 #define CONFIG_FILE "/etc/assistant-button.conf"
 #define DEFAULT_DOUBLE_PRESS_MAX 200  /* ms */
 #define ASSISTANT_KEY 112
-#define DBUS_INTERFACE "io.FuriOS.AssistantButton"
 
 enum PredefinedAction {
     NO_ACTION = 0,
@@ -38,12 +38,6 @@ enum PredefinedAction {
     ACTION_COUNT
 };
 
-enum ButtonEvent {
-    SHORT_PRESS = 1,
-    LONG_PRESS = 2,
-    DOUBLE_PRESS = 3
-};
-
 struct state {
     int fd;
     struct input_event ev;
@@ -56,7 +50,7 @@ struct state {
     char device[256];
     int short_press_count;
     long first_press_duration;
-    DBusConnection *conn;
+    GDBusConnection *dbus_conn;
 };
 
 long long
@@ -87,30 +81,6 @@ read_config(struct state *state)
     }
 
     fclose(file);
-}
-
-void
-init_dbus(struct state *state)
-{
-    DBusError err;
-    dbus_error_init(&err);
-
-    state->conn = dbus_bus_get(DBUS_BUS_SESSION, &err);
-    if (dbus_error_is_set(&err)) {
-        fprintf(stderr, "D-Bus Connection Error: %s\n", err.message);
-        dbus_error_free(&err);
-    }
-
-    if (state->conn == NULL) {
-        fprintf(stderr, "Failed to connect to D-Bus session bus\n");
-        exit(1);
-    }
-
-    int ret = dbus_bus_request_name(state->conn, DBUS_INTERFACE, DBUS_NAME_FLAG_REPLACE_EXISTING, &err);
-    if (dbus_error_is_set(&err)) {
-        fprintf(stderr, "D-Bus Name Error: %s\n", err.message);
-        dbus_error_free(&err);
-    }
 }
 
 void
@@ -232,48 +202,20 @@ has_double_press_action(void)
     return parse_custom_action("double_press") != NULL || read_config_int("double_press_predefined") > 0;
 }
 
-void
-emit_dbus_signal(struct state *state, int action, int event_type)
-{
-    DBusMessage *msg;
-    DBusMessageIter args;
-
-    msg = dbus_message_new_signal("/io/FuriOS/AssistantButton",
-                                  DBUS_INTERFACE,
-                                  "ActionPerformed");
-    if (msg == NULL) {
-        fprintf(stderr, "Failed to create D-Bus message\n");
-        return;
-    }
-
-    dbus_message_iter_init_append(msg, &args);
-    if (!dbus_message_iter_append_basic(&args, DBUS_TYPE_INT32, &action) ||
-        !dbus_message_iter_append_basic(&args, DBUS_TYPE_INT32, &event_type)) {
-        fprintf(stderr, "Failed to append arguments to D-Bus message\n");
-        dbus_message_unref(msg);
-        return;
-    }
-
-    if (!dbus_connection_send(state->conn, msg, NULL))
-        fprintf(stderr, "Failed to send D-Bus message\n");
-
-    dbus_message_unref(msg);
-}
-
 int
 short_press(struct state *state)
 {
     char *command = parse_custom_action("short_press");
     if (command) {
         run_command(command);
-        emit_dbus_signal(state, ACTION_COUNT, SHORT_PRESS);
+        dbus_emit_signal(state->dbus_conn, ACTION_COUNT, SHORT_PRESS);
         return 1;
     }
 
     int action_index = read_config_int("short_press_predefined");
     if (action_index > 0 && action_index < ACTION_COUNT) {
         handle_predefined_action((enum PredefinedAction)action_index);
-        emit_dbus_signal(state, action_index, SHORT_PRESS);
+        dbus_emit_signal(state->dbus_conn, action_index, SHORT_PRESS);
         return 1;
     }
 
@@ -286,14 +228,14 @@ long_press(struct state *state)
     char *command = parse_custom_action("long_press");
     if (command) {
         run_command(command);
-        emit_dbus_signal(state, ACTION_COUNT, LONG_PRESS);
+        dbus_emit_signal(state->dbus_conn, ACTION_COUNT, LONG_PRESS);
         return 1;
     }
 
     int action_index = read_config_int("long_press_predefined");
     if (action_index > 0 && action_index < ACTION_COUNT) {
         handle_predefined_action((enum PredefinedAction)action_index);
-        emit_dbus_signal(state, action_index, LONG_PRESS);
+        dbus_emit_signal(state->dbus_conn, action_index, LONG_PRESS);
         return 1;
     }
 
@@ -306,21 +248,19 @@ double_press(struct state *state)
     char *command = parse_custom_action("double_press");
     if (command) {
         run_command(command);
-        emit_dbus_signal(state, ACTION_COUNT, DOUBLE_PRESS);
+        dbus_emit_signal(state->dbus_conn, ACTION_COUNT, DOUBLE_PRESS);
         return 1;
     }
 
     int action_index = read_config_int("double_press_predefined");
     if (action_index > 0 && action_index < ACTION_COUNT) {
         handle_predefined_action((enum PredefinedAction)action_index);
-        emit_dbus_signal(state, action_index, DOUBLE_PRESS);
+        dbus_emit_signal(state->dbus_conn, action_index, DOUBLE_PRESS);
         return 1;
     }
 
     return 0;
 }
-
-#define MAX(a, b) ((a) > (b) ? (a) : (b))
 
 int
 calculate_timeout(struct state *state)
@@ -339,7 +279,9 @@ calculate_timeout(struct state *state)
     return 0;
 }
 
-void reset_state(struct state *state) {
+void
+reset_state(struct state *state)
+{
     state->short_press_count = 0;
     state->press_count = 0;
     state->has_long_press_occurred = 0;
@@ -412,7 +354,7 @@ main(int argc, char *argv[])
         .double_press_max = DEFAULT_DOUBLE_PRESS_MAX,
         .short_press_count = 0,
         .first_press_duration = 0,
-        .conn = NULL
+        .dbus_conn = NULL
     };
 
     strcpy(state.device, DEFAULT_DEVICE);
@@ -439,7 +381,11 @@ main(int argc, char *argv[])
     state.pfd.fd = state.fd;
     state.pfd.events = POLLIN;
 
-    init_dbus(&state);
+    state.dbus_conn = dbus_init();
+    if (state.dbus_conn == NULL) {
+        close(state.fd);
+        return EXIT_FAILURE;
+    }
 
     while (1) {
         int timeout = calculate_timeout(&state);
@@ -448,7 +394,7 @@ main(int argc, char *argv[])
         if (ret > 0) {
             if (handle_events(&state) != 0) {
                 close(state.fd);
-                dbus_connection_unref(state.conn);
+                dbus_cleanup(state.dbus_conn);
                 return EXIT_FAILURE;
             }
         } else if (ret == 0) {
@@ -468,13 +414,13 @@ main(int argc, char *argv[])
             if (errno != EINTR) {
                 perror("Poll failed");
                 close(state.fd);
-                dbus_connection_unref(state.conn);
+                dbus_cleanup(state.dbus_conn);
                 return EXIT_FAILURE;
             }
         }
     }
 
     close(state.fd);
-    dbus_connection_unref(state.conn);
+    dbus_cleanup(state.dbus_conn);
     return 0;
 }

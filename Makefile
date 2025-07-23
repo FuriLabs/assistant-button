@@ -1,7 +1,7 @@
 CC = gcc
 
-CFLAGS = `pkg-config --cflags gio-2.0 gstreamer-1.0 dbus-1` -Iinclude
-LDFLAGS = `pkg-config --libs gio-2.0 gstreamer-1.0 dbus-1` -lbatman-wrappers -lwayland-client -lxkbcommon
+CFLAGS = `pkg-config --cflags gio-2.0 gstreamer-1.0` -Iinclude
+LDFLAGS = `pkg-config --libs gio-2.0 gstreamer-1.0` -lbatman-wrappers -lwayland-client -lxkbcommon
 
 SOURCES = src/assistant-button.c src/actions.c src/utils.c src/virtual-keyboard-unstable-v1-protocol.c src/virtkey.c src/dbus.c src/config.c
 

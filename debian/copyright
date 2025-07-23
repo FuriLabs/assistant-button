@@ -3,11 +3,11 @@ Upstream-Name: assistant-button
 Source: https://github.com/furilabs/assistant-button
 
 Files: *
-Copyright: 2024 Bardia Moshiri <fakeshell@bardia.tech>
-License: GPL-3
+Copyright: 2025 Bardia Moshiri <fakeshell@bardia.tech>
+License: GPL-2.0
 
 Files: debian/*
-Copyright: 2024 Bardia Moshiri <fakeshell@bardia.tech>
+Copyright: 2025 Bardia Moshiri <fakeshell@bardia.tech>
 License: BSD-3-clause
 
 License: BSD-3-clause

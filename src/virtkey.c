@@ -1,6 +1,8 @@
-// SPDX-License-Identifier: MIT
-// Copyright (c) 2019 Josef Gajdusek
-// Copyright (C) 2023 Bardia Moshiri <fakeshell@bardia.tech>
+/**
+ * SPDX-License-Identifier: MIT
+ * Copyright (c) 2019 Josef Gajdusek
+ * Copyright (C) 2025 Bardia Moshiri <bardia@furilabs.com>
+ */
 
 #include "virtkey.h"
 
@@ -9,27 +11,29 @@ const struct wl_registry_listener registry_listener = {
     .global_remove = handle_wl_event_remove,
 };
 
-void handle_wl_event(void *data, struct wl_registry *registry,
-                     uint32_t name, const char *interface,
-                     uint32_t version)
+void
+handle_wl_event(void *data, struct wl_registry *registry,
+                uint32_t name, const char *interface,
+                uint32_t version)
 {
     struct wtype *wtype = data;
-    if (!strcmp(interface, wl_seat_interface.name)) {
+    if (!strcmp(interface, wl_seat_interface.name))
         wtype->seat = wl_registry_bind(
             registry, name, &wl_seat_interface, version <= 7 ? version : 7
         );
-    } else if (!strcmp(interface, zwp_virtual_keyboard_manager_v1_interface.name)) {
+    else if (!strcmp(interface, zwp_virtual_keyboard_manager_v1_interface.name))
         wtype->manager = wl_registry_bind(
             registry, name, &zwp_virtual_keyboard_manager_v1_interface, 1
         );
-    }
 }
 
-void handle_wl_event_remove(void *data, struct wl_registry *registry, uint32_t name)
+void
+handle_wl_event_remove(void *data, struct wl_registry *registry, uint32_t name)
 {
 }
 
-enum wtype_mod name_to_mod(const char *name)
+enum
+wtype_mod name_to_mod(const char *name)
 {
     for (unsigned int i = 0; i < ARRAY_SIZE(mod_names); i++) {
         if (!strcasecmp(mod_names[i].name, name))
@@ -38,7 +42,8 @@ enum wtype_mod name_to_mod(const char *name)
     return WTYPE_MOD_NONE;
 }
 
-unsigned int append_keymap_entry(struct wtype *wtype, wchar_t ch, xkb_keysym_t xkb)
+unsigned int
+append_keymap_entry(struct wtype *wtype, wchar_t ch, xkb_keysym_t xkb)
 {
     wtype->keymap = realloc(
         wtype->keymap, ++wtype->keymap_len * sizeof(wtype->keymap[0])
@@ -48,7 +53,8 @@ unsigned int append_keymap_entry(struct wtype *wtype, wchar_t ch, xkb_keysym_t x
     return wtype->keymap_len;
 }
 
-unsigned int get_key_code_by_wchar(struct wtype *wtype, wchar_t ch)
+unsigned int
+get_key_code_by_wchar(struct wtype *wtype, wchar_t ch)
 {
     const struct {
         wchar_t from;
@@ -59,9 +65,8 @@ unsigned int get_key_code_by_wchar(struct wtype *wtype, wchar_t ch)
         { L'\e', XKB_KEY_Escape },
     };
     for (unsigned int i = 0; i < wtype->keymap_len; i++) {
-        if (wtype->keymap[i].wchr == ch) {
+        if (wtype->keymap[i].wchr == ch)
             return i + 1;
-        }
     }
 
     xkb_keysym_t xkb = xkb_utf32_to_keysym(ch);
@@ -75,7 +80,8 @@ unsigned int get_key_code_by_wchar(struct wtype *wtype, wchar_t ch)
     return append_keymap_entry(wtype, ch, xkb);
 }
 
-unsigned int get_key_code_by_xkb(struct wtype *wtype, xkb_keysym_t xkb)
+unsigned int
+get_key_code_by_xkb(struct wtype *wtype, xkb_keysym_t xkb)
 {
     for (unsigned int i = 0; i < wtype->keymap_len; i++) {
         if (wtype->keymap[i].xkb == xkb)
@@ -85,7 +91,8 @@ unsigned int get_key_code_by_xkb(struct wtype *wtype, xkb_keysym_t xkb)
     return append_keymap_entry(wtype, 0, xkb);
 }
 
-void run_mod(struct wtype *wtype, struct wtype_command *cmd)
+void
+run_mod(struct wtype *wtype, struct wtype_command *cmd)
 {
     if (cmd->type == WTYPE_COMMAND_MOD_PRESS)
         wtype->mod_status |= cmd->mod;
@@ -100,7 +107,8 @@ void run_mod(struct wtype *wtype, struct wtype_command *cmd)
     wl_display_roundtrip(wtype->display);
 }
 
-void run_key(struct wtype *wtype, struct wtype_command *cmd)
+void
+run_key(struct wtype *wtype, struct wtype_command *cmd)
 {
     zwp_virtual_keyboard_v1_key(
         wtype->keyboard, 0, cmd->single_key_code,
@@ -110,7 +118,8 @@ void run_key(struct wtype *wtype, struct wtype_command *cmd)
     wl_display_roundtrip(wtype->display);
 }
 
-void type_keycode(struct wtype *wtype, unsigned int key_code)
+void
+type_keycode(struct wtype *wtype, unsigned int key_code)
 {
     zwp_virtual_keyboard_v1_key(
         wtype->keyboard, 0, key_code, WL_KEYBOARD_KEY_STATE_PRESSED
@@ -124,7 +133,8 @@ void type_keycode(struct wtype *wtype, unsigned int key_code)
     usleep(2000);
 }
 
-void run_text(struct wtype *wtype, struct wtype_command *cmd)
+void
+run_text(struct wtype *wtype, struct wtype_command *cmd)
 {
     for (size_t i = 0; i < cmd->key_codes_len; i++) {
         type_keycode(wtype, cmd->key_codes[i]);
@@ -132,7 +142,8 @@ void run_text(struct wtype *wtype, struct wtype_command *cmd)
     }
 }
 
-void run_commands(struct wtype *wtype)
+void
+run_commands(struct wtype *wtype)
 {
     void (*handlers[])(struct wtype *, struct wtype_command *) = {
         [WTYPE_COMMAND_MOD_PRESS] = run_mod,
@@ -146,7 +157,8 @@ void run_commands(struct wtype *wtype)
     }
 }
 
-void print_keysym_name(xkb_keysym_t keysym, FILE *f)
+void
+print_keysym_name(xkb_keysym_t keysym, FILE *f)
 {
     char sym_name[256];
 
@@ -159,7 +171,8 @@ void print_keysym_name(xkb_keysym_t keysym, FILE *f)
     fprintf(f, "%s", sym_name);
 }
 
-void upload_keymap(struct wtype *wtype)
+void
+upload_keymap(struct wtype *wtype)
 {
     char filename[] = "/tmp/wtype-XXXXXX";
     int fd = mkstemp(filename);
@@ -183,7 +196,7 @@ void upload_keymap(struct wtype *wtype)
     }
     fprintf(f, "};\n");
 
-    // TODO: Is including "complete" here really a good idea?
+    /* TODO: Is including "complete" here really a good idea? */
     fprintf(f, "xkb_types \"(unnamed)\" { include \"complete\" };\n");
     fprintf(f, "xkb_compatibility \"(unnamed)\" { include \"complete\" };\n");
 

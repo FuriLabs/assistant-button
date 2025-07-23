@@ -1,5 +1,7 @@
-// SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2024 Bardia Moshiri <fakeshell@bardia.tech>
+/**
+ * SPDX-License-Identifier: GPL-2.0-only
+ * Copyright (C) 2025 Bardia Moshiri <bardia@furilabs.com>
+ */
 
 #include <gio/gio.h>
 #include <gst/gst.h>
@@ -10,7 +12,9 @@
 
 static GMainLoop *loop;
 
-void handle_flashlight() {
+void
+handle_flashlight(void)
+{
     GDBusConnection *connection;
     GError *error = NULL;
     GVariant *result;
@@ -54,9 +58,9 @@ void handle_flashlight() {
     screen_status = get_wlroots_screen_status();
 
     gint32 new_brightness;
-    if (screen_status == 0) // Screen is on
+    if (screen_status == 0) /* Screen is on */
         new_brightness = (brightness > 0) ? 0 : 100;
-    else // Screen is off, don't allow turning on at all
+    else /* Screen is off, don't allow turning on at all */
         new_brightness = 0;
 
     result = g_dbus_connection_call_sync(
@@ -76,17 +80,22 @@ void handle_flashlight() {
     if (result == NULL) {
         g_printerr("Failed to set brightness: %s\n", error->message);
         g_error_free(error);
-    } else
+    } else {
         g_variant_unref(result);
+    }
 
     g_object_unref(connection);
 }
 
-void open_camera() {
+void
+open_camera(void)
+{
     run_command("furios-camera");
 }
 
-static gboolean bus_call(GstBus *bus, GstMessage *msg, gpointer data) {
+static gboolean
+bus_call(GstBus *bus, GstMessage *msg, gpointer data)
+{
     GMainLoop *loop = (GMainLoop *)data;
 
     switch (GST_MESSAGE_TYPE(msg)) {
@@ -113,7 +122,9 @@ static gboolean bus_call(GstBus *bus, GstMessage *msg, gpointer data) {
     return TRUE;
 }
 
-void take_picture() {
+void
+take_picture(void)
+{
     GstElement *pipeline, *source, *convert, *flip, *enc, *sink;
     GstBus *bus;
     GstStateChangeReturn ret;
@@ -156,8 +167,8 @@ void take_picture() {
 
     g_object_set(source, "camera_device", 0, "mode", 2, NULL);
     g_object_set(sink, "location", filename, NULL);
-    g_object_set(flip, "video-direction", 8, NULL); // 8 corresponds to GST_VIDEO_FLIP_METHOD_AUTO
-    g_object_set(enc, "snapshot", TRUE, NULL); // exit out after the first frame
+    g_object_set(flip, "video-direction", 8, NULL); /* 8 corresponds to GST_VIDEO_FLIP_METHOD_AUTO */
+    g_object_set(enc, "snapshot", TRUE, NULL); /* exit out after the first frame */
 
     gst_bin_add_many(GST_BIN(pipeline), source, convert, flip, enc, sink, NULL);
     if (!gst_element_link_many(source, convert, flip, enc, sink, NULL)) {
@@ -190,7 +201,9 @@ void take_picture() {
     g_free(filename);
 }
 
-void take_screenshot() {
+void
+take_screenshot()
+{
     GDBusConnection *connection;
     GError *error = NULL;
     GVariant *result;
@@ -256,10 +269,11 @@ void take_screenshot() {
     g_variant_get(result, "(bs)", &success, &filename_used);
 
     if (success) {
-        g_print("Screenshot saved to: %s\n", filename_used);
+        g_debug("Screenshot saved to: %s", filename_used);
         show_notification("Screenshot saved to", filename_used);
-    } else
-        g_print("Failed to take screenshot.\n");
+    } else {
+        g_warning("Failed to take screenshot.\n");
+   }
 
     g_free(filename_used);
     g_variant_unref(result);
@@ -269,7 +283,9 @@ void take_screenshot() {
     g_free(pictures_dir);
 }
 
-void send_key(const char *name) {
+void
+send_key(const char *name)
+{
     struct wtype wtype;
     memset(&wtype, 0, sizeof(wtype));
 
@@ -280,7 +296,7 @@ void send_key(const char *name) {
     cmd->type = WTYPE_COMMAND_TEXT;
     xkb_keysym_t ks = xkb_keysym_from_name(name, XKB_KEYSYM_CASE_INSENSITIVE);
     if (ks == XKB_KEY_NoSymbol) {
-        g_print("Unknown key '%s'", name);
+        g_warning("Unknown key '%s'", name);
         return;
     }
     cmd->key_codes = malloc(sizeof(cmd->key_codes[0]));
@@ -290,7 +306,7 @@ void send_key(const char *name) {
 
     wtype.display = wl_display_connect(NULL);
     if (wtype.display == NULL) {
-        g_print("Wayland connection failed\n");
+        g_warning("Wayland connection failed\n");
         return;
     }
     wtype.registry = wl_display_get_registry(wtype.display);
@@ -299,7 +315,7 @@ void send_key(const char *name) {
     wl_display_roundtrip(wtype.display);
 
     if (wtype.manager == NULL) {
-        g_print("Compositor does not support the virtual keyboard protocol\n");
+        g_warning("Compositor does not support the virtual keyboard protocol\n");
         return;
     }
     if (wtype.seat == NULL) {
@@ -314,7 +330,7 @@ void send_key(const char *name) {
     upload_keymap(&wtype);
     run_commands(&wtype);
 
-    g_print("%s key sent to seat\n", name);
+    g_debug("%s key sent to seat", name);
 
     free(wtype.commands);
     free(wtype.keymap);
@@ -324,7 +340,9 @@ void send_key(const char *name) {
     wl_display_disconnect(wtype.display);
 }
 
-void manual_autorotate() {
+void
+manual_autorotate(void)
+{
     GSettings *settings;
     GSettingsSchema *schema;
     GSettingsSchemaSource *schema_source;
@@ -354,7 +372,8 @@ void manual_autorotate() {
     }
 
     g_settings_set_boolean(settings, "orientation-lock", FALSE);
-    usleep(2000000); // two second should be enough for phosh to rotate
+    /* two second should be enough for phosh to rotate */
+    usleep(2000000);
     g_settings_set_boolean(settings, "orientation-lock", TRUE);
 
     g_object_unref(settings);

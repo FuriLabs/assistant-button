@@ -1,10 +1,13 @@
-// SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2024 Bardia Moshiri <fakeshell@bardia.tech>
+/**
+ * SPDX-License-Identifier: GPL-2.0-only
+ * Copyright (C) 2025 Bardia Moshiri <bardia@furilabs.com>
+ */
 
-#include <gio/gio.h>
 #include "utils.h"
 
-void run_command(const char *command) {
+void
+run_command(const char *command)
+{
     pid_t pid = fork();
     if (pid == 0) {
         execl("/bin/sh", "sh", "-c", command, NULL);
@@ -12,7 +15,9 @@ void run_command(const char *command) {
     }
 }
 
-void show_notification(const char *summary, const char *body) {
+void
+show_notification(const char *summary, const char *body)
+{
     GDBusConnection *connection;
     GError *error = NULL;
 

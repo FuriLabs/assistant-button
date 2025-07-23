@@ -1,5 +1,7 @@
-// SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2024 Bardia Moshiri <fakeshell@bardia.tech>
+/**
+ * SPDX-License-Identifier: GPL-2.0-only
+ * Copyright (C) 2025 Bardia Moshiri <bardia@furilabs.com>
+ */
 
 #include <time.h>
 #include <poll.h>
@@ -16,10 +18,10 @@
 #include "actions.h"
 #include "utils.h"
 
-#define DEFAULT_SHORT_PRESS_MAX 500  // ms
+#define DEFAULT_SHORT_PRESS_MAX 500  /* ms */
 #define DEFAULT_DEVICE "/dev/input/event1"
 #define CONFIG_FILE "/etc/assistant-button.conf"
-#define DEFAULT_DOUBLE_PRESS_MAX 200  // ms
+#define DEFAULT_DOUBLE_PRESS_MAX 200  /* ms */
 #define ASSISTANT_KEY 112
 #define DBUS_INTERFACE "io.FuriOS.AssistantButton"
 
@@ -57,18 +59,23 @@ struct state {
     DBusConnection *conn;
 };
 
-long long current_time_ms() {
+long long
+current_time_ms(void)
+{
     struct timespec spec;
     clock_gettime(CLOCK_MONOTONIC, &spec);
     return spec.tv_sec * 1000LL + spec.tv_nsec / 1e6;
 }
 
-void read_config(struct state *state) {
+void
+read_config(struct state *state)
+{
     FILE *file = fopen(CONFIG_FILE, "r");
     if (file == NULL) {
         perror("Failed to open the config file");
         return;
     }
+
     char line[256];
     while (fgets(line, sizeof(line), file)) {
         if (sscanf(line, "SHORT_PRESS_MAX=%d", &state->short_press_max) == 1)
@@ -78,10 +85,13 @@ void read_config(struct state *state) {
         if (sscanf(line, "DEVICE=%s", state->device) == 1)
             continue;
     }
+
     fclose(file);
 }
 
-void init_dbus(struct state *state) {
+void
+init_dbus(struct state *state)
+{
     DBusError err;
     dbus_error_init(&err);
 
@@ -90,6 +100,7 @@ void init_dbus(struct state *state) {
         fprintf(stderr, "D-Bus Connection Error: %s\n", err.message);
         dbus_error_free(&err);
     }
+
     if (state->conn == NULL) {
         fprintf(stderr, "Failed to connect to D-Bus session bus\n");
         exit(1);
@@ -100,15 +111,11 @@ void init_dbus(struct state *state) {
         fprintf(stderr, "D-Bus Name Error: %s\n", err.message);
         dbus_error_free(&err);
     }
-
-    /* how likely is it for this to not be primary owner? does it even need a check */
-    if (ret != DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER) {
-        fprintf(stderr, "Not primary owner of the D-Bus name\n");
-        exit(1);
-    }
 }
 
-void handle_predefined_action(enum PredefinedAction action) {
+void
+handle_predefined_action(enum PredefinedAction action)
+{
     switch (action) {
         case FLASHLIGHT:
             handle_flashlight();
@@ -139,7 +146,9 @@ void handle_predefined_action(enum PredefinedAction action) {
     }
 }
 
-int read_config_int(const char *filename) {
+int
+read_config_int(const char *filename)
+{
     const char *home_dir = getenv("HOME");
     if (home_dir == NULL) {
         fprintf(stderr, "Error: HOME environment variable not set\n");
@@ -177,7 +186,9 @@ int read_config_int(const char *filename) {
     return (int)value;
 }
 
-char* parse_custom_action(const char *filename) {
+char*
+parse_custom_action(const char *filename)
+{
     const char *home_dir = getenv("HOME");
     if (home_dir == NULL)
         return NULL;
@@ -203,19 +214,27 @@ char* parse_custom_action(const char *filename) {
     return NULL;
 }
 
-int has_short_press_action() {
+int
+has_short_press_action(void)
+{
     return parse_custom_action("short_press") != NULL || read_config_int("short_press_predefined") > 0;
 }
 
-int has_long_press_action() {
+int
+has_long_press_action(void)
+{
     return parse_custom_action("long_press") != NULL || read_config_int("long_press_predefined") > 0;
 }
 
-int has_double_press_action() {
+int
+has_double_press_action(void)
+{
     return parse_custom_action("double_press") != NULL || read_config_int("double_press_predefined") > 0;
 }
 
-void emit_dbus_signal(struct state *state, int action, int event_type) {
+void
+emit_dbus_signal(struct state *state, int action, int event_type)
+{
     DBusMessage *msg;
     DBusMessageIter args;
 
@@ -241,7 +260,9 @@ void emit_dbus_signal(struct state *state, int action, int event_type) {
     dbus_message_unref(msg);
 }
 
-int short_press(struct state *state) {
+int
+short_press(struct state *state)
+{
     char *command = parse_custom_action("short_press");
     if (command) {
         run_command(command);
@@ -259,7 +280,9 @@ int short_press(struct state *state) {
     return 0;
 }
 
-int long_press(struct state *state) {
+int
+long_press(struct state *state)
+{
     char *command = parse_custom_action("long_press");
     if (command) {
         run_command(command);
@@ -277,7 +300,9 @@ int long_press(struct state *state) {
     return 0;
 }
 
-int double_press(struct state *state) {
+int
+double_press(struct state *state)
+{
     char *command = parse_custom_action("double_press");
     if (command) {
         run_command(command);
@@ -297,7 +322,9 @@ int double_press(struct state *state) {
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
-int calculate_timeout(struct state *state) {
+int
+calculate_timeout(struct state *state)
+{
     if (state->press_count == 0)
         return -1;
 
@@ -318,7 +345,9 @@ void reset_state(struct state *state) {
     state->has_long_press_occurred = 0;
 }
 
-int handle_events(struct state *state) {
+int
+handle_events(struct state *state)
+{
     while (1) {
         int ret = poll(&state->pfd, 1, 0);
         if (ret > 0) {
@@ -336,7 +365,7 @@ int handle_events(struct state *state) {
                     if (!state->has_long_press_occurred) {
                         long duration = current_time_ms() - state->press_time;
                         if (duration < state->short_press_max) {
-                            // Short press: if we don't have a double press action, execute the short press action immediately
+                            /* Short press: if we don't have a double press action, execute the short press action immediately */
                             if (!has_double_press_action()) {
                                 short_press(state);
                                 reset_state(state);
@@ -352,7 +381,7 @@ int handle_events(struct state *state) {
                 }
             }
         } else if (ret == 0) {
-            return 0; // No more events
+            return 0; /* No more events */
         } else {
             if (errno != EINTR) {
                 perror("Poll failed");
@@ -362,15 +391,18 @@ int handle_events(struct state *state) {
     }
 }
 
-void wait_for_next_event(struct state *state) {
+void
+wait_for_next_event(struct state *state)
+{
     int timeout = -1;
-    if ((has_double_press_action() || has_long_press_action()) && state->press_count > 0) {
+    if ((has_double_press_action() || has_long_press_action()) && state->press_count > 0)
         timeout = state->short_press_max;
-    }
     poll(&state->pfd, 1, timeout);
 }
 
-int main(int argc, char *argv[]) {
+int
+main(int argc, char *argv[])
+{
     struct state state = {
         .fd = -1,
         .press_time = 0,
@@ -420,7 +452,7 @@ int main(int argc, char *argv[]) {
                 return EXIT_FAILURE;
             }
         } else if (ret == 0) {
-            // Timeout occurred, process any pending double/long press actions
+            /* Timeout occurred, process any pending double/long press actions */
             long long current_time = current_time_ms();
             long duration = current_time - state.press_time;
 

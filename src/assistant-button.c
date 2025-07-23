@@ -3,27 +3,15 @@
  * Copyright (C) 2025 Bardia Moshiri <bardia@furilabs.com>
  */
 
-#include <time.h>
 #include <poll.h>
-#include <errno.h>
 #include <stdio.h>
 #include <fcntl.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <string.h>
-#include <limits.h>
-#include <sys/stat.h>
 #include <linux/input.h>
 #include <gio/gio.h>
 #include "actions.h"
 #include "utils.h"
 #include "dbus.h"
-
-#define DEFAULT_SHORT_PRESS_MAX 500  /* ms */
-#define DEFAULT_DEVICE "/dev/input/event1"
-#define CONFIG_FILE "/etc/assistant-button.conf"
-#define DEFAULT_DOUBLE_PRESS_MAX 200  /* ms */
-#define ASSISTANT_KEY 112
+#include "config.h"
 
 enum PredefinedAction {
     NO_ACTION = 0,
@@ -45,9 +33,7 @@ struct state {
     long long press_time;
     int press_count;
     int has_long_press_occurred;
-    int short_press_max;
-    int double_press_max;
-    char device[256];
+    struct config config;
     int short_press_count;
     long first_press_duration;
     GDBusConnection *dbus_conn;
@@ -64,23 +50,7 @@ current_time_ms(void)
 void
 read_config(struct state *state)
 {
-    FILE *file = fopen(CONFIG_FILE, "r");
-    if (file == NULL) {
-        perror("Failed to open the config file");
-        return;
-    }
-
-    char line[256];
-    while (fgets(line, sizeof(line), file)) {
-        if (sscanf(line, "SHORT_PRESS_MAX=%d", &state->short_press_max) == 1)
-            continue;
-        if (sscanf(line, "DOUBLE_PRESS_MAX=%d", &state->double_press_max) == 1)
-            continue;
-        if (sscanf(line, "DEVICE=%s", state->device) == 1)
-            continue;
-    }
-
-    fclose(file);
+    config_load(&state->config);
 }
 
 void
@@ -119,69 +89,13 @@ handle_predefined_action(enum PredefinedAction action)
 int
 read_config_int(const char *filename)
 {
-    const char *home_dir = getenv("HOME");
-    if (home_dir == NULL) {
-        fprintf(stderr, "Error: HOME environment variable not set\n");
-        return -1;
-    }
-
-    char file_path[PATH_MAX];
-    snprintf(file_path, sizeof(file_path), "%s/.config/assistant-button/%s", home_dir, filename);
-
-    FILE *file = fopen(file_path, "r");
-    if (file == NULL)
-        return -1;
-
-    char buffer[32];
-    if (fgets(buffer, sizeof(buffer), file) == NULL) {
-        fclose(file);
-        return -1;
-    }
-
-    fclose(file);
-
-    char *endptr;
-    long value = strtol(buffer, &endptr, 10);
-
-    if (endptr == buffer || *endptr != '\n') {
-        fprintf(stderr, "Error: Invalid integer in file %s\n", file_path);
-        return -1;
-    }
-
-    if (value < INT_MIN || value > INT_MAX) {
-        fprintf(stderr, "Error: Integer out of range in file %s\n", file_path);
-        return -1;
-    }
-
-    return (int)value;
+    return config_read_user_int(filename);
 }
 
 char*
 parse_custom_action(const char *filename)
 {
-    const char *home_dir = getenv("HOME");
-    if (home_dir == NULL)
-        return NULL;
-
-    char file_path[512];
-    snprintf(file_path, sizeof(file_path), "%s/.config/assistant-button/%s", home_dir, filename);
-
-    struct stat st;
-    if (stat(file_path, &st) == 0 && S_ISREG(st.st_mode)) {
-        int fd = open(file_path, O_RDONLY);
-        if (fd != -1) {
-            static char buffer[256];
-            ssize_t bytes_read = read(fd, buffer, sizeof(buffer) - 1);
-            close(fd);
-
-            if (bytes_read > 0) {
-                buffer[bytes_read] = '\0';
-                if (strlen(buffer) > 0)
-                    return buffer;
-            }
-        }
-    }
-    return NULL;
+    return config_read_user_action(filename);
 }
 
 int
@@ -209,6 +123,7 @@ short_press(struct state *state)
     if (command) {
         run_command(command);
         dbus_emit_signal(state->dbus_conn, ACTION_COUNT, SHORT_PRESS);
+        g_free(command);
         return 1;
     }
 
@@ -229,6 +144,7 @@ long_press(struct state *state)
     if (command) {
         run_command(command);
         dbus_emit_signal(state->dbus_conn, ACTION_COUNT, LONG_PRESS);
+        g_free(command);
         return 1;
     }
 
@@ -249,6 +165,7 @@ double_press(struct state *state)
     if (command) {
         run_command(command);
         dbus_emit_signal(state->dbus_conn, ACTION_COUNT, DOUBLE_PRESS);
+        g_free(command);
         return 1;
     }
 
@@ -272,9 +189,9 @@ calculate_timeout(struct state *state)
     long time_since_press = current_time - state->press_time;
 
     if (has_long_press_action() && !state->has_long_press_occurred)
-        return MAX(0, state->short_press_max - time_since_press);
+        return MAX(0, state->config.short_press_max - time_since_press);
     if (has_double_press_action() && state->short_press_count == 1)
-        return MAX(0, state->double_press_max - time_since_press);
+        return MAX(0, state->config.double_press_max - time_since_press);
 
     return 0;
 }
@@ -298,7 +215,7 @@ handle_events(struct state *state)
                 return -1;
             }
 
-            if (state->ev.type == EV_KEY && state->ev.code == ASSISTANT_KEY) {
+            if (state->ev.type == EV_KEY && state->ev.code == state->config.assistant_key) {
                 if (state->ev.value == 1) {
                     state->press_time = current_time_ms();
                     state->press_count++;
@@ -306,7 +223,7 @@ handle_events(struct state *state)
                 } else if (state->ev.value == 0) {
                     if (!state->has_long_press_occurred) {
                         long duration = current_time_ms() - state->press_time;
-                        if (duration < state->short_press_max) {
+                        if (duration < state->config.short_press_max) {
                             /* Short press: if we don't have a double press action, execute the short press action immediately */
                             if (!has_double_press_action()) {
                                 short_press(state);
@@ -338,7 +255,7 @@ wait_for_next_event(struct state *state)
 {
     int timeout = -1;
     if ((has_double_press_action() || has_long_press_action()) && state->press_count > 0)
-        timeout = state->short_press_max;
+        timeout = state->config.short_press_max;
     poll(&state->pfd, 1, timeout);
 }
 
@@ -350,31 +267,33 @@ main(int argc, char *argv[])
         .press_time = 0,
         .press_count = 0,
         .has_long_press_occurred = 0,
-        .short_press_max = DEFAULT_SHORT_PRESS_MAX,
-        .double_press_max = DEFAULT_DOUBLE_PRESS_MAX,
+        .config = {0},
         .short_press_count = 0,
         .first_press_duration = 0,
         .dbus_conn = NULL
     };
 
-    strcpy(state.device, DEFAULT_DEVICE);
-
     read_config(&state);
 
     if (argc > 1)
-        state.short_press_max = atoi(argv[1]);
+        state.config.short_press_max = atoi(argv[1]);
 
     if (argc > 2)
-        state.double_press_max = atoi(argv[2]);
+        state.config.double_press_max = atoi(argv[2]);
 
     if (argc > 3) {
-        strncpy(state.device, argv[3], sizeof(state.device) - 1);
-        state.device[sizeof(state.device) - 1] = '\0';
+        state.config.assistant_key = atoi(argv[3]);
     }
 
-    state.fd = open(state.device, O_RDONLY | O_NONBLOCK);
+    if (argc > 4) {
+        g_free(state.config.device);
+        state.config.device = g_strdup(argv[4]);
+    }
+
+    state.fd = open(state.config.device, O_RDONLY | O_NONBLOCK);
     if (state.fd == -1) {
         perror("Failed to open the device");
+        config_free(&state.config);
         return EXIT_FAILURE;
     }
 
@@ -384,6 +303,7 @@ main(int argc, char *argv[])
     state.dbus_conn = dbus_init();
     if (state.dbus_conn == NULL) {
         close(state.fd);
+        config_free(&state.config);
         return EXIT_FAILURE;
     }
 
@@ -395,6 +315,7 @@ main(int argc, char *argv[])
             if (handle_events(&state) != 0) {
                 close(state.fd);
                 dbus_cleanup(state.dbus_conn);
+                config_free(&state.config);
                 return EXIT_FAILURE;
             }
         } else if (ret == 0) {
@@ -402,10 +323,10 @@ main(int argc, char *argv[])
             long long current_time = current_time_ms();
             long duration = current_time - state.press_time;
 
-            if (state.short_press_count == 1 && duration >= state.double_press_max) {
+            if (state.short_press_count == 1 && duration >= state.config.double_press_max) {
                 short_press(&state);
                 reset_state(&state);
-            } else if (duration >= state.short_press_max && !state.has_long_press_occurred && state.press_count > 0) {
+            } else if (duration >= state.config.short_press_max && !state.has_long_press_occurred && state.press_count > 0) {
                 long_press(&state);
                 reset_state(&state);
                 state.has_long_press_occurred = 1;
@@ -415,6 +336,7 @@ main(int argc, char *argv[])
                 perror("Poll failed");
                 close(state.fd);
                 dbus_cleanup(state.dbus_conn);
+                config_free(&state.config);
                 return EXIT_FAILURE;
             }
         }
@@ -422,5 +344,6 @@ main(int argc, char *argv[])
 
     close(state.fd);
     dbus_cleanup(state.dbus_conn);
+    config_free(&state.config);
     return 0;
 }

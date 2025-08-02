@@ -6,6 +6,7 @@
 #include <poll.h>
 #include <stdio.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <linux/input.h>
 #include <gio/gio.h>
 #include "actions.h"
@@ -37,7 +38,42 @@ struct state {
     int short_press_count;
     long first_press_duration;
     GDBusConnection *dbus_conn;
+    guint dbus_owner_id;
 };
+
+static volatile sig_atomic_t should_exit = 0;
+static struct state *global_state = NULL;
+
+static void
+signal_handler(int sig)
+{
+    should_exit = 1;
+}
+
+static void
+cleanup_state(struct state *state)
+{
+    if (state->fd != -1) {
+        close(state->fd);
+        state->fd = -1;
+    }
+
+    if (state->dbus_conn) {
+        /* Flush any pending D-Bus operations */
+        g_dbus_connection_flush_sync(state->dbus_conn, NULL, NULL);
+
+        /* Release the D-Bus name */
+        if (state->dbus_owner_id > 0) {
+            g_bus_unown_name(state->dbus_owner_id);
+            state->dbus_owner_id = 0;
+        }
+
+        dbus_cleanup(state->dbus_conn);
+        state->dbus_conn = NULL;
+    }
+
+    config_free(&state->config);
+}
 
 long long
 current_time_ms(void)
@@ -101,19 +137,28 @@ parse_custom_action(const char *filename)
 int
 has_short_press_action(void)
 {
-    return parse_custom_action("short_press") != NULL || read_config_int("short_press_predefined") > 0;
+    char *action = parse_custom_action("short_press");
+    int has_action = (action != NULL) || (read_config_int("short_press_predefined") > 0);
+    g_free(action);
+    return has_action;
 }
 
 int
 has_long_press_action(void)
 {
-    return parse_custom_action("long_press") != NULL || read_config_int("long_press_predefined") > 0;
+    char *action = parse_custom_action("long_press");
+    int has_action = (action != NULL) || (read_config_int("long_press_predefined") > 0);
+    g_free(action);
+    return has_action;
 }
 
 int
 has_double_press_action(void)
 {
-    return parse_custom_action("double_press") != NULL || read_config_int("double_press_predefined") > 0;
+    char *action = parse_custom_action("double_press");
+    int has_action = (action != NULL) || (read_config_int("double_press_predefined") > 0);
+    g_free(action);
+    return has_action;
 }
 
 int
@@ -270,8 +315,15 @@ main(int argc, char *argv[])
         .config = {0},
         .short_press_count = 0,
         .first_press_duration = 0,
-        .dbus_conn = NULL
+        .dbus_conn = NULL,
+        .dbus_owner_id = 0
     };
+
+    global_state = &state;
+
+    signal(SIGINT, signal_handler);
+    signal(SIGTERM, signal_handler);
+    signal(SIGPIPE, SIG_IGN);
 
     read_config(&state);
 
@@ -293,29 +345,26 @@ main(int argc, char *argv[])
     state.fd = open(state.config.device, O_RDONLY | O_NONBLOCK);
     if (state.fd == -1) {
         perror("Failed to open the device");
-        config_free(&state.config);
+        cleanup_state(&state);
         return EXIT_FAILURE;
     }
 
     state.pfd.fd = state.fd;
     state.pfd.events = POLLIN;
 
-    state.dbus_conn = dbus_init();
+    state.dbus_conn = dbus_init(&state.dbus_owner_id);
     if (state.dbus_conn == NULL) {
-        close(state.fd);
-        config_free(&state.config);
+        cleanup_state(&state);
         return EXIT_FAILURE;
     }
 
-    while (1) {
+    while (!should_exit) {
         int timeout = calculate_timeout(&state);
         int ret = poll(&state.pfd, 1, timeout);
 
         if (ret > 0) {
             if (handle_events(&state) != 0) {
-                close(state.fd);
-                dbus_cleanup(state.dbus_conn);
-                config_free(&state.config);
+                cleanup_state(&state);
                 return EXIT_FAILURE;
             }
         } else if (ret == 0) {
@@ -334,16 +383,13 @@ main(int argc, char *argv[])
         } else {
             if (errno != EINTR) {
                 perror("Poll failed");
-                close(state.fd);
-                dbus_cleanup(state.dbus_conn);
-                config_free(&state.config);
+                cleanup_state(&state);
                 return EXIT_FAILURE;
             }
         }
     }
 
-    close(state.fd);
-    dbus_cleanup(state.dbus_conn);
-    config_free(&state.config);
-    return 0;
+    g_debug("Shutting down gracefully...");
+    cleanup_state(&state);
+    return EXIT_SUCCESS;
 }

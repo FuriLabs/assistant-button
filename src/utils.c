@@ -20,6 +20,7 @@ show_notification(const char *summary, const char *body)
 {
     GDBusConnection *connection;
     GError *error = NULL;
+    GVariant *result;
 
     connection = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
     if (connection == NULL) {
@@ -28,7 +29,7 @@ show_notification(const char *summary, const char *body)
         return;
     }
 
-    g_dbus_connection_call_sync(
+    result = g_dbus_connection_call_sync(
         connection,
         "org.freedesktop.Notifications",
         "/org/freedesktop/Notifications",
@@ -45,6 +46,8 @@ show_notification(const char *summary, const char *body)
     if (error != NULL) {
         g_printerr("Failed to show notification: %s\n", error->message);
         g_error_free(error);
+    } else if (result != NULL) {
+        g_variant_unref(result);
     }
 
     g_object_unref(connection);

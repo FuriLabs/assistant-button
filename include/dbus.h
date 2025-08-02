@@ -17,10 +17,11 @@ enum ButtonEvent {
 /**
  * Initialize D-Bus connection and acquire service name.
  *
- * @return  GDBusConnection pointer on success, NULL on failure.
+ * @param owner_id    Pointer to store the D-Bus name owner ID for cleanup.
+ * @return            GDBusConnection pointer on success, NULL on failure.
  */
 GDBusConnection *
-dbus_init(void);
+dbus_init(guint *owner_id);
 
 /**
  * Emit ActionPerformed signal over D-Bus.
@@ -33,11 +34,19 @@ void
 dbus_emit_signal(GDBusConnection *connection, gint action, gint event_type);
 
 /**
- * Clean up D-Bus connection.
+ * Clean up D-Bus connection and release owned name.
  *
  * @param connection  GDBus connection to clean up.
  */
 void
 dbus_cleanup(GDBusConnection *connection);
 
-#endif // DBUS_H
+/**
+ * Release D-Bus name ownership.
+ *
+ * @param owner_id    D-Bus name owner ID to release.
+ */
+void
+dbus_release_name(guint owner_id);
+
+#endif /* DBUS_H */

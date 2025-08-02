@@ -3,18 +3,16 @@
  * Copyright (C) 2025 Bardia Moshiri <bardia@furilabs.com>
  */
 
-//#include <gio/gio.h>
 #include "dbus.h"
 
 #define DBUS_INTERFACE "io.FuriOS.AssistantButton"
 #define DBUS_OBJECT_PATH "/io/FuriOS/AssistantButton"
 
 GDBusConnection *
-dbus_init(void)
+dbus_init(guint *owner_id)
 {
     GError *error = NULL;
     GDBusConnection *connection;
-    guint owner_id;
 
     connection = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
     if (connection == NULL) {
@@ -23,7 +21,7 @@ dbus_init(void)
         return NULL;
     }
 
-    owner_id = g_bus_own_name_on_connection(
+    *owner_id = g_bus_own_name_on_connection(
         connection,
         DBUS_INTERFACE,
         G_BUS_NAME_OWNER_FLAGS_REPLACE,
@@ -33,7 +31,7 @@ dbus_init(void)
         NULL
     );
 
-    if (owner_id == 0) {
+    if (*owner_id == 0) {
         g_printerr("Failed to own D-Bus name: %s\n", DBUS_INTERFACE);
         g_object_unref(connection);
         return NULL;

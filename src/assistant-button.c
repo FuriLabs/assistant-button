@@ -9,6 +9,7 @@
 #include <signal.h>
 #include <linux/input.h>
 #include <gio/gio.h>
+
 #include "actions.h"
 #include "utils.h"
 #include "dbus.h"
@@ -39,6 +40,9 @@ struct state {
     long first_press_duration;
     GDBusConnection *dbus_conn;
     guint dbus_owner_id;
+
+    int cached_has_long_action;
+    int cached_has_double_action;
 };
 
 static volatile sig_atomic_t should_exit = 0;
@@ -47,12 +51,16 @@ static struct state *global_state = NULL;
 static void
 signal_handler(int sig)
 {
+    (void)sig;
     should_exit = 1;
 }
 
 static void
 cleanup_state(struct state *state)
 {
+    if (!state)
+        return;
+
     if (state->fd != -1) {
         close(state->fd);
         state->fd = -1;
@@ -80,7 +88,7 @@ current_time_ms(void)
 {
     struct timespec spec;
     clock_gettime(CLOCK_MONOTONIC, &spec);
-    return spec.tv_sec * 1000LL + spec.tv_nsec / 1e6;
+    return spec.tv_sec * 1000LL + (long long)(spec.tv_nsec / 1000000LL);
 }
 
 void
@@ -128,37 +136,24 @@ read_config_int(const char *filename)
     return config_read_user_int(filename);
 }
 
-char*
+char *
 parse_custom_action(const char *filename)
 {
     return config_read_user_action(filename);
 }
 
-int
-has_short_press_action(void)
+static void
+refresh_action_cache(struct state *state)
 {
-    char *action = parse_custom_action("short_press");
-    int has_action = (action != NULL) || (read_config_int("short_press_predefined") > 0);
-    g_free(action);
-    return has_action;
-}
+    char *long_cmd = parse_custom_action("long_press");
+    state->cached_has_long_action = (long_cmd != NULL) ||
+                                    (read_config_int("long_press_predefined") > 0);
+    g_free(long_cmd);
 
-int
-has_long_press_action(void)
-{
-    char *action = parse_custom_action("long_press");
-    int has_action = (action != NULL) || (read_config_int("long_press_predefined") > 0);
-    g_free(action);
-    return has_action;
-}
-
-int
-has_double_press_action(void)
-{
-    char *action = parse_custom_action("double_press");
-    int has_action = (action != NULL) || (read_config_int("double_press_predefined") > 0);
-    g_free(action);
-    return has_action;
+    char *double_cmd = parse_custom_action("double_press");
+    state->cached_has_double_action = (double_cmd != NULL) ||
+                                      (read_config_int("double_press_predefined") > 0);
+    g_free(double_cmd);
 }
 
 int
@@ -230,15 +225,15 @@ calculate_timeout(struct state *state)
     if (state->press_count == 0)
         return -1;
 
-    long long current_time = current_time_ms();
-    long time_since_press = current_time - state->press_time;
+    long long now = current_time_ms();
+    long elapsed = (long)(now - state->press_time);
 
-    if (has_long_press_action() && !state->has_long_press_occurred)
-        return MAX(0, state->config.short_press_max - time_since_press);
-    if (has_double_press_action() && state->short_press_count == 1)
-        return MAX(0, state->config.double_press_max - time_since_press);
+    if (state->cached_has_long_action && !state->has_long_press_occurred)
+        return MAX(0, state->config.short_press_max - elapsed);
+    if (state->cached_has_double_action && state->short_press_count == 1)
+        return MAX(0, state->config.double_press_max - elapsed);
 
-    return 0;
+    return -1;
 }
 
 void
@@ -247,6 +242,8 @@ reset_state(struct state *state)
     state->short_press_count = 0;
     state->press_count = 0;
     state->has_long_press_occurred = 0;
+    state->cached_has_long_action = 0;
+    state->cached_has_double_action = 0;
 }
 
 int
@@ -262,15 +259,17 @@ handle_events(struct state *state)
 
             if (state->ev.type == EV_KEY && state->ev.code == state->config.assistant_key) {
                 if (state->ev.value == 1) {
+                    refresh_action_cache(state);
                     state->press_time = current_time_ms();
                     state->press_count++;
                     state->has_long_press_occurred = 0;
                 } else if (state->ev.value == 0) {
                     if (!state->has_long_press_occurred) {
-                        long duration = current_time_ms() - state->press_time;
+                        long duration = (long)(current_time_ms() - state->press_time);
+
                         if (duration < state->config.short_press_max) {
                             /* Short press: if we don't have a double press action, execute the short press action immediately */
-                            if (!has_double_press_action()) {
+                            if (!state->cached_has_double_action) {
                                 short_press(state);
                                 reset_state(state);
                             } else {
@@ -295,15 +294,6 @@ handle_events(struct state *state)
     }
 }
 
-void
-wait_for_next_event(struct state *state)
-{
-    int timeout = -1;
-    if ((has_double_press_action() || has_long_press_action()) && state->press_count > 0)
-        timeout = state->config.short_press_max;
-    poll(&state->pfd, 1, timeout);
-}
-
 int
 main(int argc, char *argv[])
 {
@@ -312,11 +302,13 @@ main(int argc, char *argv[])
         .press_time = 0,
         .press_count = 0,
         .has_long_press_occurred = 0,
-        .config = {0},
+        .config = (struct config){0},
         .short_press_count = 0,
         .first_press_duration = 0,
         .dbus_conn = NULL,
-        .dbus_owner_id = 0
+        .dbus_owner_id = 0,
+        .cached_has_long_action = 0,
+        .cached_has_double_action = 0
     };
 
     global_state = &state;
@@ -333,9 +325,8 @@ main(int argc, char *argv[])
     if (argc > 2)
         state.config.double_press_max = atoi(argv[2]);
 
-    if (argc > 3) {
+    if (argc > 3)
         state.config.assistant_key = atoi(argv[3]);
-    }
 
     if (argc > 4) {
         g_free(state.config.device);
@@ -369,16 +360,21 @@ main(int argc, char *argv[])
             }
         } else if (ret == 0) {
             /* Timeout occurred, process any pending double/long press actions */
-            long long current_time = current_time_ms();
-            long duration = current_time - state.press_time;
+            long long now = current_time_ms();
+            long duration = (long)(now - state.press_time);
 
-            if (state.short_press_count == 1 && duration >= state.config.double_press_max) {
+            if (state.cached_has_double_action &&
+                state.short_press_count == 1 &&
+                duration >= state.config.double_press_max) {
                 short_press(&state);
                 reset_state(&state);
-            } else if (duration >= state.config.short_press_max && !state.has_long_press_occurred && state.press_count > 0) {
+            } else if (state.cached_has_long_action &&
+                       duration >= state.config.short_press_max &&
+                       !state.has_long_press_occurred &&
+                       state.press_count > 0) {
                 long_press(&state);
-                reset_state(&state);
                 state.has_long_press_occurred = 1;
+                reset_state(&state);
             }
         } else {
             if (errno != EINTR) {

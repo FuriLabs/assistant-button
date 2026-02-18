@@ -5,7 +5,6 @@
 
 #include <gio/gio.h>
 #include <gst/gst.h>
-#include <batman/wlrdisplay.h>
 #include "actions.h"
 #include "virtkey.h"
 #include "utils.h"
@@ -13,14 +12,13 @@
 static GMainLoop *loop;
 
 void
-handle_flashlight(void)
+handle_flashlight(gboolean screen_on)
 {
     GDBusConnection *connection = NULL;
     GError *error = NULL;
     GVariant *result = NULL;
     GVariant *brightness_variant = NULL;
     guint32 brightness = 0;
-    int screen_status;
 
     connection = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
     if (connection == NULL) {
@@ -55,12 +53,12 @@ handle_flashlight(void)
     g_variant_unref(result);
     result = NULL;
 
-    screen_status = get_wlroots_screen_status();
-
     gint32 new_brightness;
-    if (screen_status == 0) /* Screen is on */
+    if (screen_on)
+        /* Screen is on */
         new_brightness = (brightness > 0) ? 0 : 100;
-    else /* Screen is off, don't allow turning on at all */
+    else
+        /* Screen is off, don't allow turning on at all */
         new_brightness = 0;
 
     result = g_dbus_connection_call_sync(

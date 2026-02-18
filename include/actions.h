@@ -8,10 +8,13 @@
 
 /**
  * Toggle flashlight on/off based on current brightness and screen status.
- * Turns off flashlight when screen is off.
+ * If screen is on: toggles brightness (0 <-> 100).
+ * If screen is off: forces brightness to 0 (off).
+ *
+ * @param screen_on TRUE if the screen is on, FALSE otherwise.
  */
 void
-handle_flashlight(void);
+handle_flashlight(gboolean screen_on);
 
 /**
  * Launch the FuriOS camera application.

@@ -1,7 +1,7 @@
 /**
  * SPDX-License-Identifier: MIT
  * Copyright (c) 2019 Josef Gajdusek
- * Copyright (C) 2025 Bardia Moshiri <bardia@furilabs.com>
+ * Copyright (C) 2026 Bardia Moshiri <bardia@furilabs.com>
  */
 
 #include "virtkey.h"
